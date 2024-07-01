@@ -207,6 +207,8 @@ void TextEdit::Text::invalidate_cache(int p_line, int p_column, bool p_text_chan
 	text.write[p_line].data_buf->set_direction((TextServer::Direction)direction);
 	text.write[p_line].data_buf->set_break_flags(flags);
 	text.write[p_line].data_buf->set_preserve_control(draw_control_chars);
+	text.write[p_line].data_buf->set_custom_punctuation(get_enabled_word_separators());
+
 	if (p_ime_text.length() > 0) {
 		if (p_text_changed) {
 			text.write[p_line].data_buf->add_string(p_ime_text, font, font_size, language);
@@ -275,6 +277,8 @@ void TextEdit::Text::invalidate_all_lines() {
 		}
 		text.write[i].data_buf->set_width(width);
 		text.write[i].data_buf->set_break_flags(flags);
+		text.write[i].data_buf->set_custom_punctuation(get_enabled_word_separators());
+
 		if (tab_size_dirty) {
 			if (tab_size > 0) {
 				Vector<float> tabs;
@@ -286,6 +290,7 @@ void TextEdit::Text::invalidate_all_lines() {
 	}
 	tab_size_dirty = false;
 
+	max_width = -1;
 	_calculate_max_line_width();
 }
 
@@ -404,10 +409,12 @@ void TextEdit::Text::remove_range(int p_from_line, int p_to_line) {
 	text.resize(text.size() - diff);
 
 	if (dirty_height) {
+		line_height = -1;
 		_calculate_line_height();
 	}
 
 	if (dirty_width) {
+		max_width = -1;
 		_calculate_max_line_width();
 	}
 }
@@ -434,6 +441,57 @@ void TextEdit::Text::move_gutters(int p_from_line, int p_to_line) {
 	text.write[p_to_line].gutters = text[p_from_line].gutters;
 	text.write[p_from_line].gutters.clear();
 	text.write[p_from_line].gutters.resize(gutter_count);
+}
+
+void TextEdit::Text::set_use_default_word_separators(bool p_enabled) {
+	if (use_default_word_separators == p_enabled) {
+		return;
+	}
+	use_default_word_separators = p_enabled;
+	invalidate_all_lines();
+}
+
+void TextEdit::Text::set_use_custom_word_separators(bool p_enabled) {
+	if (use_custom_word_separators == p_enabled) {
+		return;
+	}
+	use_custom_word_separators = p_enabled;
+	invalidate_all_lines();
+}
+
+bool TextEdit::Text::is_default_word_separators_enabled() const {
+	return use_default_word_separators;
+}
+
+bool TextEdit::Text::is_custom_word_separators_enabled() const {
+	return use_custom_word_separators;
+}
+
+String TextEdit::Text::get_custom_word_separators() const {
+	return custom_word_separators;
+}
+
+String TextEdit::Text::get_default_word_separators() const {
+	String concat_separators = "!\"#$%&'()*+,-./:;<=>?@[\\]^`{|}~";
+	for (char32_t ch = 0x2000; ch <= 0x206F; ++ch) { // General punctuation block.
+		concat_separators += ch;
+	}
+	for (char32_t ch = 0x3000; ch <= 0x303F; ++ch) { // CJK punctuation block.
+		concat_separators += ch;
+	}
+	return concat_separators;
+}
+
+// Get default and/or custom word separators depending on the option enabled.
+String TextEdit::Text::get_enabled_word_separators() const {
+	String all_separators;
+	if (use_default_word_separators) {
+		all_separators += get_default_word_separators();
+	}
+	if (use_custom_word_separators) {
+		all_separators += get_custom_word_separators();
+	}
+	return all_separators;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -2831,24 +2889,26 @@ void TextEdit::_update_caches() {
 }
 
 void TextEdit::_close_ime_window() {
-	if (get_viewport()->get_window_id() == DisplayServer::INVALID_WINDOW_ID || !DisplayServer::get_singleton()->has_feature(DisplayServer::FEATURE_IME)) {
+	DisplayServer::WindowID wid = get_window() ? get_window()->get_window_id() : DisplayServer::INVALID_WINDOW_ID;
+	if (wid == DisplayServer::INVALID_WINDOW_ID || !DisplayServer::get_singleton()->has_feature(DisplayServer::FEATURE_IME)) {
 		return;
 	}
-	DisplayServer::get_singleton()->window_set_ime_position(Point2(), get_viewport()->get_window_id());
-	DisplayServer::get_singleton()->window_set_ime_active(false, get_viewport()->get_window_id());
+	DisplayServer::get_singleton()->window_set_ime_position(Point2(), wid);
+	DisplayServer::get_singleton()->window_set_ime_active(false, wid);
 }
 
 void TextEdit::_update_ime_window_position() {
-	if (get_viewport()->get_window_id() == DisplayServer::INVALID_WINDOW_ID || !DisplayServer::get_singleton()->has_feature(DisplayServer::FEATURE_IME)) {
+	DisplayServer::WindowID wid = get_window() ? get_window()->get_window_id() : DisplayServer::INVALID_WINDOW_ID;
+	if (wid == DisplayServer::INVALID_WINDOW_ID || !DisplayServer::get_singleton()->has_feature(DisplayServer::FEATURE_IME)) {
 		return;
 	}
-	DisplayServer::get_singleton()->window_set_ime_active(true, get_viewport()->get_window_id());
+	DisplayServer::get_singleton()->window_set_ime_active(true, wid);
 	Point2 pos = get_global_position() + get_caret_draw_pos();
 	if (get_window()->get_embedder()) {
 		pos += get_viewport()->get_popup_base_transform().get_origin();
 	}
 	// The window will move to the updated position the next time the IME is updated, not immediately.
-	DisplayServer::get_singleton()->window_set_ime_position(pos, get_viewport()->get_window_id());
+	DisplayServer::get_singleton()->window_set_ime_position(pos, wid);
 }
 
 void TextEdit::_update_ime_text() {
@@ -3902,7 +3962,9 @@ void TextEdit::end_complex_operation() {
 	if (complex_operation_count > 0) {
 		return;
 	}
-	ERR_FAIL_COND(undo_stack.is_empty());
+	if (undo_stack.is_empty()) {
+		return;
+	}
 
 	undo_stack.back()->get().end_carets = carets;
 	if (undo_stack.back()->get().chain_forward) {
@@ -5172,7 +5234,7 @@ void TextEdit::add_selection_for_next_occurrence() {
 
 	const String &highlighted_text = get_selected_text(caret);
 	int column = get_selection_from_column(caret) + 1;
-	int line = get_caret_line(caret);
+	int line = get_selection_from_line(caret);
 
 	const Point2i next_occurrence = search(highlighted_text, SEARCH_MATCH_CASE, line, column);
 
@@ -5186,6 +5248,7 @@ void TextEdit::add_selection_for_next_occurrence() {
 
 	if (new_caret != -1) {
 		select(next_occurrence.y, next_occurrence.x, next_occurrence.y, end, new_caret);
+		_unhide_carets();
 		adjust_viewport_to_caret(new_caret);
 		merge_overlapping_carets();
 	}
@@ -5209,8 +5272,8 @@ void TextEdit::skip_selection_for_next_occurrence() {
 	// Due to const and &(reference) presence, ternary operator is a way to avoid errors and warnings.
 	const String &searched_text = has_selection(caret) ? get_selected_text(caret) : get_word_under_caret(caret);
 
-	int column = (has_selection(caret) ? get_selection_from_column(caret) : get_caret_column(caret)) + 1;
-	int line = get_caret_line(caret);
+	int column = get_selection_from_column(caret) + 1;
+	int line = get_selection_from_line(caret);
 
 	const Point2i next_occurrence = search(searched_text, SEARCH_MATCH_CASE, line, column);
 
@@ -5218,12 +5281,13 @@ void TextEdit::skip_selection_for_next_occurrence() {
 		return;
 	}
 
-	int to_column = (has_selection(caret) ? get_selection_to_column(caret) : get_caret_column(caret)) + 1;
+	int to_column = get_selection_to_column(caret) + 1;
 	int end = next_occurrence.x + (to_column - column);
 	int new_caret = add_caret(next_occurrence.y, end);
 
 	if (new_caret != -1) {
 		select(next_occurrence.y, next_occurrence.x, next_occurrence.y, end, new_caret);
+		_unhide_carets();
 		adjust_viewport_to_caret(new_caret);
 		merge_overlapping_carets();
 	}
@@ -6268,6 +6332,44 @@ bool TextEdit::is_highlight_all_occurrences_enabled() const {
 	return highlight_all_occurrences;
 }
 
+void TextEdit::set_use_default_word_separators(bool p_enabled) {
+	text.set_use_default_word_separators(p_enabled);
+}
+
+bool TextEdit::is_default_word_separators_enabled() const {
+	return text.is_default_word_separators_enabled();
+}
+
+// Set word separators. Combine default separators with custom separators if those options are enabled.
+void TextEdit::set_custom_word_separators(const String &p_separators) {
+	text.set_custom_word_separators(p_separators);
+}
+
+void TextEdit::Text::set_custom_word_separators(const String &p_separators) {
+	if (custom_word_separators == p_separators) {
+		return;
+	}
+	custom_word_separators = p_separators;
+	invalidate_all_lines();
+}
+
+bool TextEdit::is_custom_word_separators_enabled() const {
+	return text.is_custom_word_separators_enabled();
+}
+
+String TextEdit::get_custom_word_separators() const {
+	return text.get_custom_word_separators();
+}
+
+// Enable or disable custom word separators.
+void TextEdit::set_use_custom_word_separators(bool p_enabled) {
+	text.set_use_custom_word_separators(p_enabled);
+}
+
+String TextEdit::get_default_word_separators() const {
+	return text.get_default_word_separators();
+}
+
 void TextEdit::set_draw_control_chars(bool p_enabled) {
 	if (draw_control_chars != p_enabled) {
 		draw_control_chars = p_enabled;
@@ -6542,6 +6644,14 @@ void TextEdit::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("get_word_under_caret", "caret_index"), &TextEdit::get_word_under_caret, DEFVAL(-1));
 
+	ClassDB::bind_method(D_METHOD("set_use_default_word_separators", "enabled"), &TextEdit::set_use_default_word_separators);
+	ClassDB::bind_method(D_METHOD("is_default_word_separators_enabled"), &TextEdit::is_default_word_separators_enabled);
+
+	ClassDB::bind_method(D_METHOD("set_use_custom_word_separators", "enabled"), &TextEdit::set_use_custom_word_separators);
+	ClassDB::bind_method(D_METHOD("is_custom_word_separators_enabled"), &TextEdit::is_custom_word_separators_enabled);
+	ClassDB::bind_method(D_METHOD("set_custom_word_separators", "custom_word_separators"), &TextEdit::set_custom_word_separators);
+	ClassDB::bind_method(D_METHOD("get_custom_word_separators"), &TextEdit::get_custom_word_separators);
+
 	/* Selection. */
 	BIND_ENUM_CONSTANT(SELECTION_MODE_NONE);
 	BIND_ENUM_CONSTANT(SELECTION_MODE_SHIFT);
@@ -6764,6 +6874,10 @@ void TextEdit::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "caret_move_on_right_click"), "set_move_caret_on_right_click_enabled", "is_move_caret_on_right_click_enabled");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "caret_mid_grapheme"), "set_caret_mid_grapheme_enabled", "is_caret_mid_grapheme_enabled");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "caret_multiple"), "set_multiple_carets_enabled", "is_multiple_carets_enabled");
+
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "use_default_word_separators"), "set_use_default_word_separators", "is_default_word_separators_enabled");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "use_custom_word_separators"), "set_use_custom_word_separators", "is_custom_word_separators_enabled");
+	ADD_PROPERTY(PropertyInfo(Variant::STRING, "custom_word_separators"), "set_custom_word_separators", "get_custom_word_separators");
 
 	ADD_GROUP("Highlighting", "");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "syntax_highlighter", PROPERTY_HINT_RESOURCE_TYPE, "SyntaxHighlighter", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_ALWAYS_DUPLICATE), "set_syntax_highlighter", "get_syntax_highlighter");
@@ -8067,7 +8181,7 @@ void TextEdit::_text_changed() {
 }
 
 void TextEdit::_emit_text_changed() {
-	emit_signal(SNAME("text_changed"));
+	emit_signal(SceneStringName(text_changed));
 	text_changed_dirty = false;
 }
 
@@ -8264,8 +8378,8 @@ TextEdit::TextEdit(const String &p_placeholder) {
 	add_child(h_scroll, false, INTERNAL_MODE_FRONT);
 	add_child(v_scroll, false, INTERNAL_MODE_FRONT);
 
-	h_scroll->connect("value_changed", callable_mp(this, &TextEdit::_scroll_moved));
-	v_scroll->connect("value_changed", callable_mp(this, &TextEdit::_scroll_moved));
+	h_scroll->connect(SceneStringName(value_changed), callable_mp(this, &TextEdit::_scroll_moved));
+	v_scroll->connect(SceneStringName(value_changed), callable_mp(this, &TextEdit::_scroll_moved));
 
 	v_scroll->connect("scrolling", callable_mp(this, &TextEdit::_v_scroll_input));
 
