@@ -227,6 +227,7 @@ public:
 		id<MTLRenderCommandEncoder> encoder = nil;
 		id<MTLBuffer> __unsafe_unretained index_buffer = nil; // Buffer is owned by RDD.
 		MTLIndexType index_type = MTLIndexTypeUInt16;
+		uint32_t index_offset = 0;
 		LocalVector<id<MTLBuffer> __unsafe_unretained> vertex_buffers;
 		LocalVector<NSUInteger> vertex_offsets;
 		// clang-format off
@@ -315,6 +316,13 @@ public:
 				}
 			}
 			dirty.set_flag(DirtyFlag::DIRTY_UNIFORMS);
+		}
+
+		_FORCE_INLINE_ void mark_blend_dirty() {
+			if (!blend_constants.has_value()) {
+				return;
+			}
+			dirty.set_flag(DirtyFlag::DIRTY_BLEND);
 		}
 
 		MTLScissorRect clip_to_render_area(MTLScissorRect p_rect) const {

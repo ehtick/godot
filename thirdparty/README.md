@@ -78,7 +78,7 @@ fix build with our own copy of zstd (patch in `patches`).
 
 Files extracted from upstream source:
 
-- `bc6h.glsl`, `CrossPlatformSettings_piece_all.glsl` and `UavCrossPlatform_piece_all.glsl`.
+- `bc6h.glsl`, `bc1.glsl`, `CrossPlatformSettings_piece_all.glsl` and `UavCrossPlatform_piece_all.glsl`.
 - `LICENSE.md`
 
 
@@ -388,7 +388,7 @@ Files extracted from upstream source:
 ## harfbuzz
 
 - Upstream: https://github.com/harfbuzz/harfbuzz
-- Version: 8.5.0 (30485ee8c3d43c553afb9d78b9924cb71c8d2f19, 2024)
+- Version: 10.0.1 (a1d9bfe62818ef0fa9cf63b6e6d51436b1c93cbc, 2024)
 - License: MIT
 
 Files extracted from upstream source:
@@ -543,7 +543,7 @@ in the MSVC debugger.
 ## mbedtls
 
 - Upstream: https://github.com/Mbed-TLS/mbedtls
-- Version: 3.6.0 (2ca6c285a0dd3f33982dd57299012dacab1ff206, 2024)
+- Version: 3.6.1 (71c569d44bf3a8bd53d874c81ee8ac644dd6e9e3, 2024)
 - License: Apache 2.0
 
 File extracted from upstream release tarball:
@@ -553,8 +553,6 @@ File extracted from upstream release tarball:
 - All `.c` and `.h` from `library/` to `thirdparty/mbedtls/library/` except
   for the `psa_*.c` source files
 - The `LICENSE` file (edited to keep only the Apache 2.0 variant)
-- Applied the patch `no-flexible-arrays.diff` to fix Windows build (see
-  upstream GH-9020)
 - Applied the patch `msvc-redeclaration-bug.diff` to fix a compilation error
   with some MSVC versions
 - Added 2 files `godot_core_mbedtls_platform.c` and `godot_core_mbedtls_config.h`
@@ -616,7 +614,7 @@ to solve some MSVC warnings. See the patches in the `patches` directory.
 ## miniupnpc
 
 - Upstream: https://github.com/miniupnp/miniupnp
-- Version: 2.2.7 (d4d5ec7d48c093b37b2ea5d7171ede21ce9d7ff2, 2024)
+- Version: 2.2.8 (b55145ec095652289a59c33603f3abafee898273, 2024)
 - License: BSD-3-Clause
 
 Files extracted from upstream source:
@@ -652,6 +650,10 @@ comments and a patch is provided in the `patches` folder.
 
 Collection of single-file libraries used in Godot components.
 
+- `bcdec.h`
+  * Upstream: https://github.com/iOrange/bcdec
+  * Version: git (3b29f8f44466c7d59852670f82f53905cf627d48, 2024)
+  * License: MIT
 - `clipper.{cpp,hpp}`
   * Upstream: https://sourceforge.net/projects/polyclipping
   * Version: 6.4.2 (2017) + Godot changes (added optional exceptions handling)
@@ -692,8 +694,8 @@ Collection of single-file libraries used in Godot components.
   * License: MIT
 - `qoa.h`
   * Upstream: https://github.com/phoboslab/qoa
-  * Version: git (5c2a86d615661f34636cf179abf4fa278d3257e0, 2024)
-  * Modifications: Inlined functions, patched uninitialized variables and untyped mallocs.
+  * Version: git (e0c69447d4d3945c3c92ac1751e4cdc9803a8303, 2024)
+  * Modifications: Added a few modifiers to comply with C++ nature.
   * License: MIT
 - `r128.{c,h}`
   * Upstream: https://github.com/fahickman/r128
@@ -759,7 +761,7 @@ with the provided patch.
 ## openxr
 
 - Upstream: https://github.com/KhronosGroup/OpenXR-SDK
-- Version: 1.1.38 (f90488c4fb1537f4256d09d4a4d3ad5543ebaf24, 2024)
+- Version: 1.1.41 (7d1c0961351bac61fd7bb72d402649d5ac3f2935, 2024)
 - License: Apache 2.0
 
 Files extracted from upstream source:
@@ -875,23 +877,6 @@ They can be reapplied using the patches included in the `patches`
 folder, in order.
 
 
-## squish
-
-- Upstream: https://sourceforge.net/projects/libsquish
-- Version: 1.15 (r104, 2017)
-- License: MIT
-
-Files extracted from upstream source:
-
-- `LICENSE.txt`
-- All `.cpp`, `.h` and `.inl` files
-
-Some downstream changes have been made and are identified by
-`// -- GODOT begin --` and `// -- GODOT end --` comments.
-They can be reapplied using the patches included in the `patches`
-folder.
-
-
 ## tinyexr
 
 - Upstream: https://github.com/syoyo/tinyexr
@@ -909,7 +894,7 @@ instead of `miniz.h` as an external dependency.
 ## thorvg
 
 - Upstream: https://github.com/thorvg/thorvg
-- Version: 0.14.7 (e3a6bf5229a9671c385ee78bc33e6e6b611a9729, 2024)
+- Version: 0.14.10 (366dcd72850c360b49e841e568fc5a154d7cce9e, 2024)
 - License: MIT
 
 Files extracted from upstream source:

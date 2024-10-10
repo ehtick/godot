@@ -143,6 +143,9 @@ void MDCommandBuffer::bind_pipeline(RDD::PipelineID p_pipeline) {
 			if (render.pipeline != nullptr && render.pipeline->depth_stencil != rp->depth_stencil) {
 				render.dirty.set_flag(RenderState::DIRTY_DEPTH);
 			}
+			if (rp->raster_state.blend.enabled) {
+				render.dirty.set_flag(RenderState::DIRTY_BLEND);
+			}
 			render.pipeline = rp;
 		}
 	} else if (p->type == MDPipelineType::Compute) {
@@ -301,6 +304,7 @@ void MDCommandBuffer::render_clear_attachments(VectorView<RDD::AttachmentClear> 
 	render.mark_viewport_dirty();
 	render.mark_scissors_dirty();
 	render.mark_vertex_dirty();
+	render.mark_blend_dirty();
 }
 
 void MDCommandBuffer::_render_set_dirty_state() {
@@ -560,10 +564,10 @@ void MDCommandBuffer::_render_clear_render_area() {
 		}
 	}
 	uint32_t ds_index = subpass.depth_stencil_reference.attachment;
-	MDAttachment const &attachment = pass.attachments[ds_index];
-	bool shouldClearDepth = (ds_index != RDD::AttachmentReference::UNUSED && attachment.shouldClear(subpass, false));
-	bool shouldClearStencil = (ds_index != RDD::AttachmentReference::UNUSED && attachment.shouldClear(subpass, true));
+	bool shouldClearDepth = (ds_index != RDD::AttachmentReference::UNUSED && pass.attachments[ds_index].shouldClear(subpass, false));
+	bool shouldClearStencil = (ds_index != RDD::AttachmentReference::UNUSED && pass.attachments[ds_index].shouldClear(subpass, true));
 	if (shouldClearDepth || shouldClearStencil) {
+		MDAttachment const &attachment = pass.attachments[ds_index];
 		BitField<RDD::TextureAspectBits> bits;
 		if (shouldClearDepth && attachment.type & MDAttachmentType::Depth) {
 			bits.set_flag(RDD::TEXTURE_ASPECT_DEPTH_BIT);
@@ -717,6 +721,7 @@ void MDCommandBuffer::render_bind_index_buffer(RDD::BufferID p_buffer, RDD::Inde
 
 	render.index_buffer = rid::get(p_buffer);
 	render.index_type = p_format == RDD::IndexBufferFormat::INDEX_BUFFER_FORMAT_UINT16 ? MTLIndexTypeUInt16 : MTLIndexTypeUInt32;
+	render.index_offset = p_offset;
 }
 
 void MDCommandBuffer::render_draw_indexed(uint32_t p_index_count,
@@ -729,13 +734,16 @@ void MDCommandBuffer::render_draw_indexed(uint32_t p_index_count,
 
 	id<MTLRenderCommandEncoder> enc = render.encoder;
 
+	uint32_t index_offset = render.index_offset;
+	index_offset += p_first_index * (render.index_type == MTLIndexTypeUInt16 ? sizeof(uint16_t) : sizeof(uint32_t));
+
 	[enc drawIndexedPrimitives:render.pipeline->raster_state.render_primitive
 					indexCount:p_index_count
 					 indexType:render.index_type
 				   indexBuffer:render.index_buffer
-			 indexBufferOffset:p_vertex_offset
+			 indexBufferOffset:index_offset
 				 instanceCount:p_instance_count
-					baseVertex:p_first_index
+					baseVertex:p_vertex_offset
 				  baseInstance:p_first_instance];
 }
 
@@ -1204,7 +1212,7 @@ vertex VaryingsPos vertClear(AttributesPos attributes [[stage_in]], constant Cle
     return varyings;
 }
 )",
-								  ClearAttKey::DEPTH_INDEX];
+				ClearAttKey::DEPTH_INDEX];
 
 		return new_func(msl, @"vertClear", nil);
 	}
